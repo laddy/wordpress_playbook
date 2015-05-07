@@ -1,0 +1,65 @@
+# TargetOS ubuntu14.04
+# wordpress playbook
+---
+
+- hosts: servers
+  sudo: true
+  user: vagrant
+  gather_facts: no # Get host information
+  tasks:
+
+    - name: install Apache
+      apt: pkg=apache2 update_cache=yes state=latest
+
+    - name: install php
+      apt: pkg={{item}} update_cache=no state=latest
+      with_items:
+        - php5
+        - php5-mysql
+        - php5-gd
+        - php5-xmlrpc
+        - php5-curl
+        - php5-mcrypt
+      notify:
+        - restart apache
+
+    - name: Install MySQL
+      apt: name=mysql-server state=latest
+
+    - name: CreateDatabase
+      command: mysql -u root -e 'create database wordpress'
+      ignore_errors: True
+
+    - name: Download Wordpress
+      get_url: url=https://ja.wordpress.org/latest-ja.tar.gz dest=/tmp/latest-ja.tar.gz
+
+    - name: Uncompress Wordpress
+      command: chdir=/tmp tar xvzf latest-ja.tar.gz
+
+    - name: Delete /var/www/html
+      file: path=/var/www/html state=absent
+
+    - name: MoveWordpress
+      command: mv /tmp/wordpress /var/www/html
+
+    - name: Edit Setting files
+      command: chdir=/var/www/html cp wp-config-sample.php wp-config.php
+
+    - replace: dest='/var/www/html/wp-config.php' regexp='database_name_here' replace='wordpress'
+    - replace: dest='/var/www/html/wp-config.php' regexp='username_here' replace='root'
+    - replace: dest='/var/www/html/wp-config.php' regexp='password_here' replace=''
+
+# echo $RANDOM | sha256sum | cut -c1-64
+
+    - name: DB INIT
+      copy: src=init.sql dest=/var/www/html/
+
+    - command: sh -c "mysql -u root wordpress < /var/www/html/init.sql"
+    - command: rm /var/www/html/init.sql
+
+    - name: GroupSetting
+      command: chown -R www-data:www-data /var/www
+
+  handlers:
+    - name: restart apache
+      service: name=apache2 state=restarted
